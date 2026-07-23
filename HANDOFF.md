@@ -31,8 +31,8 @@ bug, a loop, or a bad instruction — the capability simply is not in the grant.
 `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
     "iris": {
-      "command": "/Users/jamessmith/Projects/iris/.venv/bin/python",
-      "args": ["/Users/jamessmith/Projects/iris/server.py"],
+      "command": "/Users/<you>/Projects/iris/.venv/bin/python",
+      "args": ["/Users/<you>/Projects/iris/server.py"],
       "env": {
         "IRIS_CLIENT_ID": "<application client id>",
         "IRIS_TENANT_ID": "<directory tenant id>",
