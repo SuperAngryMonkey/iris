@@ -1,95 +1,161 @@
 # iris — Handoff
 
-> Draft-only Microsoft 365 mail MCP. Composes into a dedicated mail folder
-> (default **Cyrano**). A human reads it and presses Send. iris cannot send.
-> By design.
+> **Read this first.** Single pickup point for the draft-only M365 mail MCP.
+> Just continue the work — no re-introduction needed.
 
-## Why draft-only
-The app requests **`Mail.ReadWrite` and nothing else**. `Mail.Send` is
-deliberately absent, so the token is *structurally incapable* of putting mail
-in flight. This is not a guardrail that can be argued around or bypassed by a
-bug, a loop, or a bad instruction — the capability simply is not in the grant.
+---
 
-## Status
-- Code written, deps installed, imports clean. **Never yet run against Graph.**
-- Blocked on: Entra app registration (needs a CLIENT_ID), then `iris_login()`.
+## TL;DR — state in five lines
+1. iris is **built, registered, signed in, and working end to end.**
+2. It composes into the **Cyrano** mail folder. It **cannot send** — no Mail.Send scope.
+3. A real draft to dean@iothings.ai was created and read back on 2026-07-23. Ghost sent it.
+4. **Two bugs are live in the public repo.** `iris_login()` can never succeed.
+5. Fix those first. Everything else is polish.
 
-## One-time setup in Entra ID
-1. Entra ID -> App registrations -> New registration. Single tenant is fine.
-   Name it `iris`. Copy the **Application (client) ID** and **Directory
-   (tenant) ID**.
-2. Authentication -> Add a platform -> Mobile and desktop applications ->
-   tick `https://login.microsoftonline.com/common/oauth2/nativeclient`.
-   Then set **Allow public client flows = Yes**. (Device code needs this.)
-3. API permissions -> Add -> Microsoft Graph -> **Delegated** -> `Mail.ReadWrite`.
-   **Do NOT add Mail.Send.** That omission is the safety property.
-   No admin consent needed for a delegated Mail.ReadWrite on your own mailbox.
-4. No client secret. Public client, device code flow, nothing sensitive on disk
-   except the token cache.
+---
 
-## Wire into Claude Desktop
-`~/Library/Application Support/Claude/claude_desktop_config.json`:
+## What / where
+- **iris = draft-only Microsoft 365 mail MCP.** Writes into Outlook, stops there.
+  A human reads the draft and presses Send.
+- Local: `~/Projects/iris` on Mac-studio. Public: github.com/SuperAngryMonkey/iris (MIT).
+- Registered in Claude Desktop as `iris`, alongside christian / ferryman / tupperware.
+- Named for Iris, the other messenger of the gods — sibling to [hermes], ferryman, obol, minos.
+
+## Status: WORKING
+Verified on 2026-07-23 by an actual draft appearing in the mailbox, not by the
+server starting cleanly:
+- `iris_create_draft(...)` -> created in **Cyrano** (folder auto-created on first use)
+- `iris_list_drafts()` -> read it back
+- Token carries `Mail.ReadWrite openid profile email`. **No Mail.Send.**
+
+## Entra registration — DONE, do not redo
+| item | value |
+|------|-------|
+| App name | `iris`, single tenant, 800 Pound Gorilla Inc. |
+| Client ID | `cf1473d7-9c86-4833-9d88-d9f91c120546` |
+| Tenant ID | `cc06d355-c099-4a61-8aae-61973e4eb27e` |
+| Client secret | **none, deliberately** — public client, device code |
+| Allow public client flows | Enabled |
+| Graph permissions | `Mail.ReadWrite` (Delegated) + default `User.Read` |
+
+Neither ID is a secret. The absence of a secret, and of `Mail.Send`, is the design.
+
+## Claude Desktop config — DONE
+Already patched into `claude_desktop_config.json` (backup at
+`claude_desktop_config.json.bak-iris`):
 
     "iris": {
       "command": "/Users/<you>/Projects/iris/.venv/bin/python",
       "args": ["/Users/<you>/Projects/iris/server.py"],
       "env": {
-        "IRIS_CLIENT_ID": "<application client id>",
-        "IRIS_TENANT_ID": "<directory tenant id>",
+        "IRIS_CLIENT_ID": "cf1473d7-9c86-4833-9d88-d9f91c120546",
+        "IRIS_TENANT_ID": "cc06d355-c099-4a61-8aae-61973e4eb27e",
         "IRIS_DRAFT_FOLDER": "Cyrano"
       }
     }
 
-Restart Claude Desktop, then call `iris_login()`. It returns a URL and a code;
-enter them in a browser once. The refresh token is cached at
-`.token_cache.json` (mode 600, gitignored) and renews silently until it lapses
-(~90 days idle, or on password change / CA policy shift).
+Token cache lives at `.token_cache.json` (mode 600, gitignored) and renews
+silently until it lapses — roughly 90 days idle, or on a password change or
+Conditional Access shift.
 
-## Where drafts land
-Drafts are staged in a top-level mail folder named by `IRIS_DRAFT_FOLDER`
-(default `Cyrano`), created automatically on first use. Set it to an empty
-string to fall back to the normal Drafts folder.
+---
 
-They are still real drafts and Outlook opens and sends them normally, but
-they will **not** appear in the Drafts view — look in the Cyrano folder.
+## KNOWN BUGS — start here
 
-For replies, Graph `createReply` always lands the draft in Drafts first, so
-iris moves it afterwards. A move assigns a **new message id**, which is why
-the returned id differs from the one createReply produced.
+### 1. `iris_login()` cannot work
+It calls `initiate_device_flow()` and then immediately
+`acquire_token_by_device_flow()`, which **blocks until the user authenticates**.
+The `user_code` is captured but never returned until after that call finishes —
+so the human never sees the code they are supposed to enter, and the flow times
+out after ~15 minutes.
+
+This is public. The README tells people to call `iris_login()` as setup step 4.
+Anyone who clones the repo hits a dead end at the first step.
+
+**Fix:** split into two tools sharing a module-level flow variable —
+`iris_login_start()` initiates and returns the verification URL + code
+immediately; `iris_login_finish()` performs the blocking exchange and writes
+the cache.
+
+**Workaround used to sign in the first time:** a two-step script run through
+christian that writes to the same `.token_cache.json` the server reads. See
+`docs/AS-BUILT.md`.
+
+### 2. `iris_auth_status()` returns 403
+It calls Graph `/me`, which requires `User.Read`. The token only requests
+`Mail.ReadWrite`, so Graph replies `Authorization_RequestDenied`. Sign-in is
+fine; the status tool is wrong.
+
+**Fix:** drop the `/me` call and read the username from the MSAL account object
+(`app.get_accounts()[0]["username"]`). Preferable to adding `User.Read` to
+SCOPES — keeping the grant minimal is the entire point of this project.
+
+Until fixed, use `iris_list_drafts()` as the health check.
+
+---
 
 ## Tools
 | tool | what it does |
 |------|--------------|
-| `iris_login()` | device-code sign-in, one time |
-| `iris_auth_status()` | who we are, what scopes, allowlist state |
-| `iris_create_draft(to, subject, body, cc, bcc, html, reply_to_message_id)` | writes to Drafts, does not send |
-| `iris_list_drafts(limit)` | what is sitting in Drafts |
-| `iris_update_draft(draft_id, ...)` | revise in place, only fields passed |
-| `iris_delete_draft(draft_id, confirm)` | destructive, needs confirm=true |
+| `iris_login()` | **BROKEN** — see above |
+| `iris_auth_status()` | **BROKEN (403)** — see above |
+| `iris_create_draft(to, subject, body, cc, bcc, html, reply_to_message_id)` | works; writes to Cyrano, does not send |
+| `iris_list_drafts(limit)` | works |
+| `iris_update_draft(draft_id, ...)` | untested against Graph |
+| `iris_delete_draft(draft_id, confirm)` | untested; needs confirm=true |
 
-`reply_to_message_id` uses Graph `createReply`, so replies thread properly.
+## Where drafts land
+Top-level folder named by `IRIS_DRAFT_FOLDER` (currently `Cyrano`), created on
+first use. Empty string falls back to Drafts.
+
+They are genuine drafts and Outlook sends them normally, but they **do not
+appear in the Drafts view** — look in the folder.
+
+Replies are special: Graph `createReply` always creates in Drafts, so iris moves
+the message afterwards, and **a move assigns a new message id**. The returned id
+will not match the one createReply produced.
 
 ## Containment
-- **No send capability** — `Mail.ReadWrite` only.
-- **`recipients.allow`** — one address or domain per line. If the file is empty
-  or absent, all recipients are permitted. Populate it to restrict.
-- **`audit.log`** — every draft, update, delete, and login appended.
-- **Kill switch** — `touch DISABLED` (or `IRIS_DISABLED=1`) blocks every tool.
-- **Confirm gate** — deletion requires `confirm=true`, set only after a human
-  explicitly approves that specific deletion.
+- **No send capability** — `Mail.ReadWrite` only. Structural, not a rule.
+- `recipients.allow` — address/domain allowlist; empty or absent permits all.
+- `audit.log` — every draft, update, delete, login.
+- Kill switch — `touch DISABLED`, or `IRIS_DISABLED=1`.
+- Confirm gate — deletion requires `confirm=true`, set only on explicit human ok.
 
-## Environment gotchas
-macOS system `python3` is **3.9.6** and cannot install `mcp` (needs 3.10+).
-Use `/opt/homebrew/bin/python3.14`, the same interpreter christian runs on.
-Rebuild the venv with `python3.14 -m venv --clear .venv` — the `--clear` flag
-wipes it in place and avoids a recursive force-delete, which christian's
-dangerous-pattern gate refuses without explicit human approval.
+## Next actions, in order
+1. **Fix `iris_login()`** (split start/finish). Public repo, first-step blocker.
+2. **Fix `iris_auth_status()`** (MSAL account, not Graph `/me`).
+3. Update README with a Known Issues section — currently it documents a broken
+   setup path with no warning.
+4. Test `iris_update_draft` and `iris_delete_draft` against Graph. Never run.
+5. Decide the LICENSE copyright holder: it currently reads James B Smith III
+   personally, but the Entra app sits under 800 Pound Gorilla Inc.
+6. Optional: attachments, shared/delegated mailboxes, folder nesting via
+   `parentFolderId`.
 
-Note also that christian matches those patterns against the **whole command
-string**, heredoc body included — so writing a document that merely quotes a
-destructive command will trip the gate even though nothing is executed.
+## Repo map
+    HANDOFF.md            <- you are here
+    README.md             public-facing; needs a Known Issues section
+    LICENSE               MIT, 2026 James B Smith III
+    server.py             the whole server, ~441 lines
+    requirements.txt      mcp, msal, requests
+    recipients.allow      allowlist, currently permissive
+    docs/AS-BUILT.md      what actually ran, and the traps hit on the way
+    patch_iris.py         one-shot folder migration, applied, gitignored
+    server.py.orig        pre-folder snapshot, gitignored
 
-## Not done
-- Attachments (Graph supports <3MB inline, upload session beyond).
-- Shared / delegated mailboxes — this is `/me` only.
-- `git init` + commit. Repo is uncommitted.
+## Gotchas
+- macOS system `python3` is **3.9.6** and cannot install `mcp` (needs 3.10+).
+  Use `/opt/homebrew/bin/python3.14`, same interpreter christian runs on.
+  Rebuild with `python3.14 -m venv --clear .venv` — `--clear` wipes in place and
+  avoids a recursive force-delete, which christian's gate refuses without
+  explicit human approval.
+- christian matches dangerous-command patterns against the **whole command
+  string, heredoc body included** — a document that merely quotes a destructive
+  command trips the gate even though nothing executes.
+- Entra's new permission picker: clicking a permission group's expand chevron
+  silently closes the whole panel and loses the selection. Filter, click
+  "expand all", then tick the exact child row.
+- Verify by checking a **draft actually arrived**, never by checking the server
+  started. "It loaded" is not "it works" — that is how both bugs above survived
+  to first real use.
