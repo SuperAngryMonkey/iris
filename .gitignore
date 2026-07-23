@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.token_cache.json
+audit.log
+DISABLED
+
+# transitional scaffolding, superseded by git history
+patch_iris.py
+server.py.orig

@@ -1,0 +1,5 @@
+# iris recipient allowlist — one address or domain per line.
+# If this file is empty or absent, ALL recipients are permitted.
+# Uncomment and edit to restrict.
+#bigassmonkey.com
+#iothings.ai
