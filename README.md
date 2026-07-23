@@ -145,6 +145,10 @@ Beyond the missing send scope:
 - Shared and delegated mailboxes — this operates on `/me` only
 - Retention or cleanup of the staging folder
 
+## License
+
+MIT. See [LICENSE](LICENSE). Use it, fork it, ship it.
+
 ## Status
 
 Working, and deliberately small. Treat the first successful draft appearing in
