@@ -42,6 +42,7 @@ HERE = Path(__file__).resolve().parent
 ALLOWLIST_FILE = Path(os.environ.get("IRIS_ALLOWLIST", HERE / "recipients.allow"))
 AUDIT_LOG = Path(os.environ.get("IRIS_AUDIT_LOG", HERE / "audit.log"))
 CACHE_FILE = Path(os.environ.get("IRIS_TOKEN_CACHE", HERE / ".token_cache.json"))
+FLOW_FILE = Path(os.environ.get("IRIS_FLOW_FILE", HERE / ".pending_flow.json"))
 DISABLED_FILE = HERE / "DISABLED"
 # Drafts are staged here instead of the Drafts folder. Blank = use Drafts.
 DRAFT_FOLDER = os.environ.get("IRIS_DRAFT_FOLDER", "Cyrano")
@@ -160,13 +161,17 @@ def _graph(method: str, path: str, token: str, **kw) -> tuple[dict, int]:
     return body, resp.status_code
 
 
-def _recips(addrs: list[str] | None) -> list[dict]:
+def _recips(addrs: list[str] | str | None) -> list[dict]:
+    if isinstance(addrs, str):  # tolerate a bare address where a list is expected
+        addrs = [addrs]
     return [{"emailAddress": {"address": a.strip()}} for a in (addrs or []) if a.strip()]
 
 
 def _flatten(*groups) -> list[str]:
     out = []
     for g in groups:
+        if isinstance(g, str):  # tolerate a bare address where a list is expected
+            g = [g]
         for a in (g or []):
             if a and a.strip():
                 out.append(a.strip())
@@ -200,8 +205,8 @@ def _ensure_folder(token: str) -> tuple[str | None, str | None]:
 @mcp.tool()
 def iris_login() -> str:
     """Start a device-code sign-in for the mailbox. Returns a URL and a code
-    for the human to enter in a browser. Only needed once, or after the
-    refresh token lapses."""
+    for the human to enter in a browser; then call iris_login_finish() to
+    complete. Only needed once, or after the refresh token lapses."""
     if _disabled():
         return "iris is DISABLED (kill switch engaged)"
     if not CLIENT_ID:
@@ -211,14 +216,47 @@ def iris_login() -> str:
     flow = app.initiate_device_flow(scopes=SCOPES)
     if "user_code" not in flow:
         return f"failed to start device flow: {json.dumps(flow)[:500]}"
+    FLOW_FILE.write_text(json.dumps(flow))
+    FLOW_FILE.chmod(0o600)
     msg = flow.get("message", "")
-    result = app.acquire_token_by_device_flow(flow)  # blocks until done or expires
+    return f"{msg}\n\nAfter entering the code, call iris_login_finish() to complete sign-in."
+
+
+@mcp.tool()
+def iris_login_finish() -> str:
+    """Complete a device-code sign-in started with iris_login(). Call after
+    entering the code in the browser. Waits up to ~60s; if the code has not
+    been entered yet, it says so and can simply be called again."""
+    if _disabled():
+        return "iris is DISABLED (kill switch engaged)"
+    if not CLIENT_ID:
+        return "IRIS_CLIENT_ID is not set. See the setup notes in server.py."
+    if not FLOW_FILE.exists():
+        return "no pending sign-in — call iris_login() first"
+    try:
+        flow = json.loads(FLOW_FILE.read_text())
+    except ValueError:
+        FLOW_FILE.unlink(missing_ok=True)
+        return "pending sign-in state was unreadable — call iris_login() again"
+    if time.time() > flow.get("expires_at", 0):
+        FLOW_FILE.unlink(missing_ok=True)
+        return "the device code expired — call iris_login() to get a new one"
+    # Bound the blocking poll to ~60s per call; the stashed flow keeps its
+    # original expiry, so calling again later still works.
+    flow["expires_at"] = min(flow.get("expires_at", 0), int(time.time()) + 60)
+    cache = _cache()
+    app = _app(cache)
+    result = app.acquire_token_by_device_flow(flow)
     _save_cache(cache)
     if "access_token" in result:
+        FLOW_FILE.unlink(missing_ok=True)
         who = result.get("id_token_claims", {}).get("preferred_username", "unknown")
         _audit("login", who)
         return f"signed in as {who} (scopes: {' '.join(SCOPES)} — no send capability)"
-    return f"sign-in failed: {result.get('error_description', json.dumps(result))[:500]}\n\n{msg}"
+    if result.get("error") == "authorization_pending":
+        return "code not entered yet — finish it in the browser, then call iris_login_finish() again"
+    FLOW_FILE.unlink(missing_ok=True)
+    return f"sign-in failed: {result.get('error_description', json.dumps(result))[:500]}"
 
 
 @mcp.tool()
@@ -226,17 +264,25 @@ def iris_auth_status() -> str:
     """Report whether iris is signed in, as whom, and with what scopes."""
     if _disabled():
         return "iris is DISABLED (kill switch engaged)"
-    token, err = _token()
-    if err:
-        return err
-    body, code = _graph("GET", "/me?$select=displayName,userPrincipalName", token)
-    if code != 200:
-        return f"graph error {code}: {json.dumps(body)[:400]}"
+    if not CLIENT_ID:
+        return "IRIS_CLIENT_ID is not set. See the setup notes in server.py."
+    cache = _cache()
+    app = _app(cache)
+    accounts = app.get_accounts()
+    if not accounts:
+        return "not signed in — run iris_login() first"
+    result = app.acquire_token_silent(SCOPES, account=accounts[0])
+    _save_cache(cache)
+    if not result or "access_token" not in result:
+        return "token expired or revoked — run iris_login() again"
+    # Cheap Graph probe within the granted scope. Deliberately NOT /me:
+    # reading the profile needs User.Read, which iris does not request.
+    _, code = _graph("GET", "/me/mailFolders?$top=1&$select=id", result["access_token"])
     allow = _load_allowlist()
     return json.dumps({
-        "signed_in_as": body.get("userPrincipalName"),
-        "display_name": body.get("displayName"),
+        "signed_in_as": accounts[0].get("username"),
         "scopes": SCOPES,
+        "graph_ok": code == 200,
         "can_send": False,
         "draft_folder": DRAFT_FOLDER or "Drafts",
         "recipient_allowlist": allow or "(empty — all recipients permitted)",

@@ -159,3 +159,21 @@ will not match the one createReply produced.
 - Verify by checking a **draft actually arrived**, never by checking the server
   started. "It loaded" is not "it works" — that is how both bugs above survived
   to first real use.
+
+## 2026-08-14 — both launch bugs fixed, full lifecycle verified
+- Bug 1 FIXED: login split into `iris_login()` (starts device flow, stashes it
+  to `.pending_flow.json` mode 600, returns URL+code immediately) and
+  `iris_login_finish()` (bounded ~60s poll, safe to call repeatedly; stash
+  keeps original expiry). Not yet exercised against a real sign-in — current
+  token is healthy; first real test comes at next token lapse.
+- Bug 2 FIXED: `iris_auth_status()` no longer calls /me. Identity read from the
+  MSAL account object; Graph health probed with an in-scope call
+  (GET /me/mailFolders?$top=1). Returns graph_ok true/false.
+- Bug 3 (new, found during testing) FIXED: a bare string passed as to/cc/bcc
+  was iterated character-by-character. `_flatten` and `_recips` now wrap
+  strings. MCP clients were never affected (schema forces arrays); direct
+  callers were.
+- update/delete now TESTED against Graph: create → update → list → delete
+  cycle ran clean in the Cyrano folder (self-deleting test draft).
+- Still open: LICENSE holder decision (James B Smith III vs 800 Pound Gorilla
+  Inc.) — Ghost's call.

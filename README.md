@@ -83,7 +83,9 @@ Paths must be absolute — `~` is not expanded.
 ### 4. Sign in
 
 Restart the client and call `iris_login()`. It returns a URL and a short code
-to enter in a browser, once. The refresh token is cached at `.token_cache.json`
+to enter in a browser. After entering the code, call `iris_login_finish()` to
+complete the exchange (it waits up to ~60s and can be called again if you were
+not done yet). This is needed once. The refresh token is cached at `.token_cache.json`
 (mode 600, gitignored) and renews silently until it lapses — roughly 90 days
 idle, or on a password change or Conditional Access policy shift.
 
@@ -91,7 +93,8 @@ idle, or on a password change or Conditional Access policy shift.
 
 | Tool | Description |
 |------|-------------|
-| `iris_login()` | Device-code sign-in. One time. |
+| `iris_login()` | Start device-code sign-in: returns URL + code. One time. |
+| `iris_login_finish()` | Complete the sign-in after entering the code |
 | `iris_auth_status()` | Signed-in identity, granted scopes, allowlist state |
 | `iris_create_draft(to, subject, body, cc, bcc, html, reply_to_message_id)` | Compose into the staging folder. Does not send. |
 | `iris_list_drafts(limit)` | What is waiting in the staging folder |
