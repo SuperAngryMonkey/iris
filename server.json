@@ -1,7 +1,7 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.SuperAngryMonkey/iris",
-  "description": "Microsoft 365 mail MCP that can draft but cannot send: the token carries Mail.ReadWrite and never Mail.Send.",
+  "description": "Microsoft 365 mail MCP that drafts but cannot send: no Mail.Send scope.",
   "status": "active",
   "repository": {
     "url": "https://github.com/SuperAngryMonkey/iris",
@@ -14,7 +14,9 @@
       "registryBaseUrl": "https://pypi.org",
       "identifier": "iris-mcp",
       "version": "0.1.0",
-      "transport": { "type": "stdio" },
+      "transport": {
+        "type": "stdio"
+      },
       "environmentVariables": [
         {
           "name": "IRIS_CLIENT_ID",
