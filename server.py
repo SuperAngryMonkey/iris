@@ -45,7 +45,7 @@ CACHE_FILE = Path(os.environ.get("IRIS_TOKEN_CACHE", HERE / ".token_cache.json")
 FLOW_FILE = Path(os.environ.get("IRIS_FLOW_FILE", HERE / ".pending_flow.json"))
 DISABLED_FILE = HERE / "DISABLED"
 # Drafts are staged here instead of the Drafts folder. Blank = use Drafts.
-DRAFT_FOLDER = os.environ.get("IRIS_DRAFT_FOLDER", "Cyrano")
+DRAFT_FOLDER = os.environ.get("IRIS_DRAFT_FOLDER", "AI Drafts")
 
 CLIENT_ID = os.environ.get("IRIS_CLIENT_ID", "")
 TENANT_ID = os.environ.get("IRIS_TENANT_ID", "organizations")
@@ -300,7 +300,7 @@ def iris_create_draft(
     reply_to_message_id: str | None = None,
 ) -> str:
     """Compose a message into the staging mail folder (IRIS_DRAFT_FOLDER,
-    default "Cyrano"; created on first use). It is NOT sent — a human opens
+    default "AI Drafts"; created on first use). It is NOT sent — a human opens
     Outlook and presses Send. Set reply_to_message_id to draft a threaded
     reply to an existing message."""
     if _disabled():
@@ -483,5 +483,10 @@ def iris_delete_draft(draft_id: str, confirm: bool = False) -> str:
     return f"draft {draft_id} deleted"
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console-script entry point."""
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

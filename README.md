@@ -1,159 +1,121 @@
 # iris
 
-A **draft-only** Microsoft 365 mail MCP server. It composes email into a
-dedicated folder in your Outlook mailbox and stops. A human opens it, reads
-it, and presses Send.
+**A Microsoft 365 mail server for AI agents that cannot send email.**
 
-Named for Iris, messenger of the gods — she carries the message; she does not
-decide to deliver it.
+Not "will not". Cannot. iris requests the delegated Graph scope `Mail.ReadWrite`
+and never `Mail.Send`. The access token it holds has no capability to transmit a
+message, so no prompt, no jailbreak and no bug in this code can make one go out.
+It writes drafts into a folder in your mailbox. You open Outlook and press Send.
 
-## Why draft-only
+That is the whole design. Everything else is detail.
 
-Letting a language model send email on your behalf means a bug, a runaway
-loop, or a badly-worded instruction can put mail in front of a client before
-anyone notices. The usual mitigation is a confirmation prompt, which is a rule
-the model is asked to follow.
+---
 
-iris does not rely on a rule. It requests the delegated Graph scope
-**`Mail.ReadWrite` and nothing else**. `Mail.Send` is never granted, so the
-access token is *structurally incapable* of sending mail. There is no code
-path, no flag, and no prompt that changes that — the capability simply is not
-in the grant.
+## Why this shape
 
-Review stays where it belongs: in your mail client, on your screen, under your
-thumb.
+The usual worry about giving an agent your mailbox is that it will send
+something you did not sanction — to the wrong person, with the wrong tone, or
+because someone talked it into doing so. The common answer is a confirmation
+prompt, which is a guardrail: code that asks permission, and code can be
+bypassed.
 
-## Requirements
+iris removes the capability instead. Microsoft Graph will reject a send attempt
+made with this token, because the consent screen you approved never included
+that permission. The security boundary is Microsoft's, not this program's, and
+it holds even if this program is wrong.
 
-- Python 3.10+ (the `mcp` package will not install on older interpreters;
-  macOS system Python is 3.9 and will not work)
-- A Microsoft 365 mailbox
-- An Entra ID app registration (below) — no client secret, no admin consent
+The trade is real: a human is in the loop on every message, by construction. If
+you want autonomous sending, iris is the wrong tool.
+
+## Install
+
+```bash
+uvx iris-mcp        # run without installing
+pip install iris-mcp
+```
+
+Python 3.10+.
 
 ## Setup
 
-### 1. Register the application
+**You must register your own Entra application.** There is no shared app
+registration and no hosted service — iris talks directly from your machine to
+your tenant. This is deliberate: a shared app would mean trusting someone
+else's client ID with access to your mail.
 
-In **Entra ID → App registrations → New registration**:
+1. Entra admin centre → **App registrations** → **New registration**. Single
+   tenant is fine. No redirect URI needed.
+2. **Authentication** → Settings → enable **Allow public client flows**. Device
+   code sign-in needs this. No client secret is used anywhere.
+3. **API permissions** → Microsoft Graph → **Delegated** → add
+   **`Mail.ReadWrite`**. Add nothing else. Do not add `Mail.Send` — if it is
+   present, the guarantee above is void.
+4. Copy the **Application (client) ID** and **Directory (tenant) ID**. Neither
+   is a secret.
 
-- Name it `iris`. Single tenant is fine.
-- Copy the **Application (client) ID** and **Directory (tenant) ID**.
-
-Under **Authentication**:
-
-- Add a platform → *Mobile and desktop applications*
-- Tick `https://login.microsoftonline.com/common/oauth2/nativeclient`
-- Set **Allow public client flows = Yes** (device code requires this)
-
-Under **API permissions**:
-
-- Add → Microsoft Graph → **Delegated** → `Mail.ReadWrite`
-- **Do not add `Mail.Send`.** Its absence is the entire security model.
-
-No client secret is needed. This is a public client using the device code
-flow, so nothing sensitive is stored on disk except the cached refresh token.
-
-### 2. Install
-
-```sh
-git clone git@github.com:SuperAngryMonkey/iris.git
-cd iris
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-```
-
-### 3. Register with your MCP client
-
-For Claude Desktop, in `claude_desktop_config.json`:
+Then add iris to your MCP client:
 
 ```json
-"iris": {
-  "command": "/absolute/path/to/iris/.venv/bin/python",
-  "args": ["/absolute/path/to/iris/server.py"],
-  "env": {
-    "IRIS_CLIENT_ID": "<application client id>",
-    "IRIS_TENANT_ID": "<directory tenant id>",
-    "IRIS_DRAFT_FOLDER": "Cyrano"
+{
+  "mcpServers": {
+    "iris": {
+      "command": "uvx",
+      "args": ["iris-mcp"],
+      "env": {
+        "IRIS_CLIENT_ID": "<application client id>",
+        "IRIS_TENANT_ID": "<directory tenant id>"
+      }
+    }
   }
 }
 ```
 
-Paths must be absolute — `~` is not expanded.
-
-### 4. Sign in
-
-Restart the client and call `iris_login()`. It returns a URL and a short code
-to enter in a browser. After entering the code, call `iris_login_finish()` to
-complete the exchange (it waits up to ~60s and can be called again if you were
-not done yet). This is needed once. The refresh token is cached at `.token_cache.json`
-(mode 600, gitignored) and renews silently until it lapses — roughly 90 days
-idle, or on a password change or Conditional Access policy shift.
+Sign in once: call `iris_login`, open the URL, enter the code, then call
+`iris_login_finish`. The token cache is written next to the server, mode 600.
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `iris_login()` | Start device-code sign-in: returns URL + code. One time. |
-| `iris_login_finish()` | Complete the sign-in after entering the code |
-| `iris_auth_status()` | Signed-in identity, granted scopes, allowlist state |
-| `iris_create_draft(to, subject, body, cc, bcc, html, reply_to_message_id)` | Compose into the staging folder. Does not send. |
-| `iris_list_drafts(limit)` | What is waiting in the staging folder |
-| `iris_update_draft(draft_id, ...)` | Revise in place; only fields passed are changed |
-| `iris_delete_draft(draft_id, confirm)` | Destructive; requires `confirm=true` |
+| Tool | What it does |
+|---|---|
+| `iris_login` | Starts device-code sign-in, returns a URL and a code |
+| `iris_login_finish` | Completes sign-in; safe to call repeatedly while you type the code |
+| `iris_auth_status` | Who is signed in, which scopes, and whether Graph is reachable |
+| `iris_create_draft` | Writes a draft (to/cc/bcc, subject, body or HTML, optional reply-to) |
+| `iris_list_drafts` | Lists what is waiting in the draft folder |
+| `iris_update_draft` | Revises a draft in place |
+| `iris_delete_draft` | Deletes a draft; requires `confirm=true` |
 
-Passing `reply_to_message_id` uses Graph's `createReply`, so replies thread
-correctly rather than arriving as orphaned messages.
+## Where drafts go
 
-## Where drafts land
+Into a dedicated top-level mail folder, `AI Drafts` by default
+(`IRIS_DRAFT_FOLDER`). It is created on first use. Set the variable to an empty
+string to use the normal Drafts folder instead.
 
-Drafts are staged in a top-level mail folder named by `IRIS_DRAFT_FOLDER`,
-created automatically on first use. Set it to an empty string to use the
-normal Drafts folder instead.
+These are real drafts and Outlook sends them normally — but because they live in
+their own folder, they do **not** appear in the Drafts view. That is the point:
+agent-written mail sits somewhere you have to go and look, rather than mixed in
+with your own half-finished messages.
 
-Messages in a custom folder are still genuine drafts and Outlook opens and
-sends them normally — but they do **not** appear in the Drafts view. Look in
-the folder.
+One wrinkle worth knowing: Graph's `createReply` always lands a reply in Drafts
+first, so iris moves it afterwards, and a move assigns a new message id.
 
-Replies are a special case: Graph's `createReply` always creates the draft in
-Drafts, so iris moves it afterwards. A move assigns a **new message id**, so
-the id returned will not match the one `createReply` produced.
+## Other controls
 
-## Containment
+- **Recipient allowlist** — `recipients.allow`, one address or domain per line.
+  Absent or empty means all recipients are permitted. Point `IRIS_ALLOWLIST`
+  elsewhere if you prefer.
+- **Kill switch** — create a `DISABLED` file beside the server, or set
+  `IRIS_DISABLED=1`, and every tool refuses.
+- **Audit log** — every call is appended to `audit.log` (`IRIS_AUDIT_LOG`).
 
-Beyond the missing send scope:
+## Limits
 
-- **`recipients.allow`** — one address or domain per line. Drafts addressed
-  outside the list are refused. An empty or absent file permits all.
-- **`audit.log`** — every draft, update, deletion, and sign-in is recorded.
-- **Kill switch** — `touch DISABLED`, or set `IRIS_DISABLED=1`, to block every
-  tool without unregistering the server.
-- **Confirm gate** — deletion requires an explicit `confirm=true`, intended to
-  be set only after a human approves that specific deletion.
-
-## Configuration
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `IRIS_CLIENT_ID` | — | Entra application (client) ID. Required. |
-| `IRIS_TENANT_ID` | `organizations` | Directory (tenant) ID |
-| `IRIS_DRAFT_FOLDER` | `Cyrano` | Staging folder; empty string uses Drafts |
-| `IRIS_ALLOWLIST` | `./recipients.allow` | Recipient allowlist path |
-| `IRIS_AUDIT_LOG` | `./audit.log` | Audit log path |
-| `IRIS_TOKEN_CACHE` | `./.token_cache.json` | MSAL token cache path |
-| `IRIS_DISABLED` | unset | Set to `1` to disable every tool |
-
-## Not implemented
-
-- Attachments (Graph supports inline under 3MB, upload sessions beyond)
-- Shared and delegated mailboxes — this operates on `/me` only
-- Retention or cleanup of the staging folder
+No attachments. No shared or delegated mailboxes — `/me` only. No folder nesting
+via `parentFolderId`. Sign-in is delegated device-code as a public client, so
+the blast radius is exactly one mailbox: yours.
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Use it, fork it, ship it.
+MIT — see [LICENSE](LICENSE).
 
-## Status
-
-Working, and deliberately small. Treat the first successful draft appearing in
-your mailbox as the real test — a server that starts cleanly has proven
-nothing.
+<!-- mcp-name: io.github.SuperAngryMonkey/iris -->

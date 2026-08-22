@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.SuperAngryMonkey/iris",
+  "description": "Microsoft 365 mail MCP that can draft but cannot send: the token carries Mail.ReadWrite and never Mail.Send.",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/SuperAngryMonkey/iris",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "iris-mcp",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "IRIS_CLIENT_ID",
+          "description": "Application (client) ID of YOUR OWN Entra app registration. There is no shared app; you register one.",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "IRIS_TENANT_ID",
+          "description": "Directory (tenant) ID. Defaults to 'organizations'.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "IRIS_DRAFT_FOLDER",
+          "description": "Mail folder drafts are written to, created on first use. Defaults to 'AI Drafts'. Empty string uses Drafts.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "IRIS_ALLOWLIST",
+          "description": "Path to a recipient allowlist file. If absent or empty, all recipients are permitted.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
