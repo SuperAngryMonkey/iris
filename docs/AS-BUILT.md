@@ -1,3 +1,7 @@
+> **Development history, not user documentation.** This file records how iris
+> was built and what went wrong along the way. If you are here to *use* iris,
+> the README is the documentation; this file is kept for maintenance context.
+
 # iris — as-built
 
 What actually ran on 2026-07-23, in order, including what went wrong.

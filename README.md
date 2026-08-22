@@ -114,6 +114,11 @@ No attachments. No shared or delegated mailboxes — `/me` only. No folder nesti
 via `parentFolderId`. Sign-in is delegated device-code as a public client, so
 the blast radius is exactly one mailbox: yours.
 
+## Security
+
+The no-send guarantee, how to verify it yourself, and — just as important — what
+iris *can* reach with `Mail.ReadWrite`: see [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
