@@ -83,6 +83,11 @@ Then add iris to your MCP client:
 Sign in once: call `iris_login`, open the URL, enter the code, then call
 `iris_login_finish`. The token cache is written next to the server, mode 600.
 
+**Deploying to a whole team?** See the [Administrator Deployment
+Guide](docs/ADMIN-DEPLOYMENT.md) — authorizing iris across a Microsoft 365 tenant:
+admin consent, per-user assignment, and why it stays the delegated model rather
+than application permissions.
+
 ## Clients
 
 iris is a local **stdio** MCP server: your MCP client launches it as a child
