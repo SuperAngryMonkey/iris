@@ -204,3 +204,13 @@ will not match the one createReply produced.
   the tracked docs, replaced with placeholders. NOTE: they remain in git history,
   and a tenant id is publicly resolvable anyway — a history rewrite (filter-repo)
   is a separate step if you want them gone from old commits.
+
+## 2026-09-02 — admin deployment guide + 0.2.1
+- Added docs/ADMIN-DEPLOYMENT.md: how a tenant admin authorizes iris for other
+  users (delegated + device code; admin consent pre-consents the scope, per-user
+  assignment restricts who may sign in; explicitly NOT application permissions —
+  each user only ever reaches their own mailbox). Includes the send caveat and a
+  Conditional-Access note for device-code phishing. Genericized — no client or
+  company names.
+- Version bumped 0.2.0 -> 0.2.1 (pyproject + server.json). Docs-only; a PyPI
+  republish is still pending for package users to receive 0.2.x.
