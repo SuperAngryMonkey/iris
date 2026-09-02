@@ -11,8 +11,8 @@
 
 ## TL;DR — state in five lines
 1. iris is **built, registered, signed in, and working end to end.**
-2. It composes into the **Cyrano** mail folder. It **cannot send** — no Mail.Send scope.
-3. A real draft to dean@iothings.ai was created and read back on 2026-07-23. Ghost sent it.
+2. It composes into the **AI Drafts** mail folder. It **cannot send** — no Mail.Send scope.
+3. A real draft was created, read back, and sent by Ghost on 2026-07-23.
 4. **Two bugs are live in the public repo.** `iris_login()` can never succeed.
 5. Fix those first. Everything else is polish.
 
@@ -36,13 +36,15 @@ server starting cleanly:
 | item | value |
 |------|-------|
 | App name | `iris`, single tenant, 800 Pound Gorilla Inc. |
-| Client ID | `cf1473d7-9c86-4833-9d88-d9f91c120546` |
-| Tenant ID | `cc06d355-c099-4a61-8aae-61973e4eb27e` |
+| Client ID | `<application (client) id>` |
+| Tenant ID | `<directory (tenant) id>` |
 | Client secret | **none, deliberately** — public client, device code |
 | Allow public client flows | Enabled |
 | Graph permissions | `Mail.ReadWrite` (Delegated) + default `User.Read` |
 
-Neither ID is a secret. The absence of a secret, and of `Mail.Send`, is the design.
+Neither ID is a secret, but this is a public repo, so the real values are kept
+out of it — they live in your Entra registration and your local MCP config. The
+absence of a secret, and of `Mail.Send`, is the design.
 
 ## Claude Desktop config — DONE
 Already patched into `claude_desktop_config.json` (backup at
@@ -52,9 +54,9 @@ Already patched into `claude_desktop_config.json` (backup at
       "command": "/Users/<you>/Projects/iris/.venv/bin/python",
       "args": ["/Users/<you>/Projects/iris/server.py"],
       "env": {
-        "IRIS_CLIENT_ID": "cf1473d7-9c86-4833-9d88-d9f91c120546",
-        "IRIS_TENANT_ID": "cc06d355-c099-4a61-8aae-61973e4eb27e",
-        "IRIS_DRAFT_FOLDER": "Cyrano"
+        "IRIS_CLIENT_ID": "<application (client) id>",
+        "IRIS_TENANT_ID": "<directory (tenant) id>",
+        "IRIS_DRAFT_FOLDER": "AI Drafts"
       }
     }
 
@@ -103,13 +105,13 @@ Until fixed, use `iris_list_drafts()` as the health check.
 |------|--------------|
 | `iris_login()` | **BROKEN** — see above |
 | `iris_auth_status()` | **BROKEN (403)** — see above |
-| `iris_create_draft(to, subject, body, cc, bcc, html, reply_to_message_id)` | works; writes to Cyrano, does not send |
+| `iris_create_draft(to, subject, body, cc, bcc, html, reply_to_message_id, folder)` | works; writes to the draft folder (default `AI Drafts`), does not send |
 | `iris_list_drafts(limit)` | works |
 | `iris_update_draft(draft_id, ...)` | untested against Graph |
 | `iris_delete_draft(draft_id, confirm)` | untested; needs confirm=true |
 
 ## Where drafts land
-Top-level folder named by `IRIS_DRAFT_FOLDER` (currently `Cyrano`), created on
+Top-level folder named by `IRIS_DRAFT_FOLDER` (default `AI Drafts`), created on
 first use. Empty string falls back to Drafts.
 
 They are genuine drafts and Outlook sends them normally, but they **do not
@@ -181,3 +183,24 @@ will not match the one createReply produced.
   cycle ran clean in the Cyrano folder (self-deleting test draft).
 - Still open: LICENSE holder decision (James B Smith III vs 800 Pound Gorilla
   Inc.) — Ghost's call.
+
+## 2026-09-02 — folder selectable, default AI Drafts, public-repo scrub
+- `iris_create_draft` and `iris_list_drafts` now take an optional `folder`
+  (display name, created on first use); new `iris_list_folders` tool lists
+  top-level folders to pick from. `""`/`"Drafts"` route to the well-known Drafts
+  folder. Omitting it keeps the `IRIS_DRAFT_FOLDER` default — backward compatible.
+- Default draft folder is `AI Drafts` (the server.py code default). Dropped the
+  personal `Cyrano` value from the documented config; set `IRIS_DRAFT_FOLDER`
+  only to override.
+- Opt-in send added: `IRIS_ENABLE_SEND=1` adds `Mail.Send` to scopes and
+  registers `iris_send_draft(draft_id, confirm)` (unsent-draft check, allowlist
+  re-check, confirm gate). Off by default — the tool is not even registered
+  unless the flag is set. Turning it on also needs Mail.Send on the Entra app +
+  re-consent. SECURITY.md/README updated to describe the weaker guarantee.
+- Docs: Python guidance clarified (3.10+, macOS 3.9 too old); added a Clients
+  section — Grok CLI runs iris (local stdio); the Grok app/Bot does not (remote
+  MCP only). Version bumped to 0.2.0 (pyproject + server.json).
+- Scrubbed the real Entra Client/Tenant IDs and a third party's address out of
+  the tracked docs, replaced with placeholders. NOTE: they remain in git history,
+  and a tenant id is publicly resolvable anyway — a history rewrite (filter-repo)
+  is a separate step if you want them gone from old commits.

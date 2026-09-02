@@ -6,9 +6,11 @@ The other messenger of the gods. Composes mail into your Outlook Drafts
 folder and stops there. A human opens Outlook, reads it, and presses Send.
 
 Containment (heimdall doctrine applied to mail):
-  - NO SEND CAPABILITY  the app requests Mail.ReadWrite ONLY, never Mail.Send.
-                        This is structural: the token cannot send mail, so no
-                        bug, loop, or bad instruction can put mail in flight.
+  - SEND OFF BY DEFAULT the app requests Mail.ReadWrite only, never Mail.Send,
+                        unless the operator sets IRIS_ENABLE_SEND=1. With send
+                        off, the token cannot transmit mail — no bug, loop, or
+                        bad instruction can put mail in flight. When enabled,
+                        sending is gated by a per-call confirm and the allowlist.
   - DELEGATED AUTH      public client + device code. No client secret on disk,
                         no admin consent, blast radius = this mailbox only.
   - RECIPIENT ALLOWLIST if recipients.allow is present and non-empty, drafts to
@@ -23,8 +25,10 @@ Setup (one time, in Entra ID):
   2. Authentication -> Add platform -> Mobile and desktop -> check the
      "https://login.microsoftonline.com/common/oauth2/nativeclient" redirect,
      and set "Allow public client flows" = Yes.
-  3. API permissions -> Microsoft Graph -> Delegated -> Mail.ReadWrite.
-     Do NOT add Mail.Send. That omission is the safety property.
+  3. API permissions -> Microsoft Graph -> Delegated -> Mail.ReadWrite. Leave
+     Mail.Send OFF unless you deliberately want sending — that omission is the
+     default safety property. To enable send: add Mail.Send (Delegated), set
+     IRIS_ENABLE_SEND=1, and re-run iris_login to re-consent.
   4. Export IRIS_CLIENT_ID and IRIS_TENANT_ID, then call iris_login().
 """
 import json
@@ -51,8 +55,11 @@ CLIENT_ID = os.environ.get("IRIS_CLIENT_ID", "")
 TENANT_ID = os.environ.get("IRIS_TENANT_ID", "organizations")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 
-# Mail.ReadWrite ONLY. Adding Mail.Send here would defeat the entire design.
-SCOPES = ["Mail.ReadWrite"]
+# Mail.ReadWrite by default. Sending is OFF unless the operator opts in with
+# IRIS_ENABLE_SEND=1, which ALSO requires Mail.Send granted on the Entra app and
+# a fresh sign-in. A default install stays structurally unable to send.
+ENABLE_SEND = os.environ.get("IRIS_ENABLE_SEND") == "1"
+SCOPES = ["Mail.ReadWrite"] + (["Mail.Send"] if ENABLE_SEND else [])
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 HTTP_TIMEOUT = 30
@@ -178,25 +185,31 @@ def _flatten(*groups) -> list[str]:
     return out
 
 
-def _ensure_folder(token: str) -> tuple[str | None, str | None]:
-    """Find or create the staging mail folder. Returns (folder_id, error)."""
-    if not DRAFT_FOLDER:
+def _ensure_folder(token: str, name: str | None = None) -> tuple[str | None, str | None]:
+    """Find or create a mail folder by display name. Returns (folder_id, error).
+
+    name=None uses the configured default (IRIS_DRAFT_FOLDER). A blank name, or
+    the literal "drafts" (any case), resolves to the well-known Drafts folder.
+    Matching and creation are top-level only (no nested paths).
+    """
+    target = (DRAFT_FOLDER if name is None else name or "").strip()
+    if not target or target.lower() == "drafts":
         return "drafts", None
     body, code = _graph(
         "GET", "/me/mailFolders?$top=100&$select=id,displayName", token
     )
     if code != 200:
         return None, f"folder lookup failed {code}: {json.dumps(body)[:300]}"
-    want = DRAFT_FOLDER.strip().lower()
+    want = target.lower()
     for f in body.get("value", []):
         if (f.get("displayName") or "").strip().lower() == want:
             return f.get("id"), None
     made, code = _graph(
-        "POST", "/me/mailFolders", token, json={"displayName": DRAFT_FOLDER}
+        "POST", "/me/mailFolders", token, json={"displayName": target}
     )
     if code not in (200, 201):
         return None, f"folder creation failed {code}: {json.dumps(made)[:300]}"
-    _audit("folder", f"created {DRAFT_FOLDER} id={made.get('id')}")
+    _audit("folder", f"created {target} id={made.get('id')}")
     return made.get("id"), None
 
 
@@ -283,8 +296,8 @@ def iris_auth_status() -> str:
         "signed_in_as": accounts[0].get("username"),
         "scopes": SCOPES,
         "graph_ok": code == 200,
-        "can_send": False,
-        "draft_folder": DRAFT_FOLDER or "Drafts",
+        "can_send": ENABLE_SEND,
+        "default_draft_folder": DRAFT_FOLDER or "Drafts",
         "recipient_allowlist": allow or "(empty — all recipients permitted)",
     }, indent=2)
 
@@ -298,11 +311,15 @@ def iris_create_draft(
     bcc: list[str] | None = None,
     html: bool = False,
     reply_to_message_id: str | None = None,
+    folder: str | None = None,
 ) -> str:
-    """Compose a message into the staging mail folder (IRIS_DRAFT_FOLDER,
-    default "AI Drafts"; created on first use). It is NOT sent — a human opens
-    Outlook and presses Send. Set reply_to_message_id to draft a threaded
-    reply to an existing message."""
+    """Compose a message into a mail folder as an unsent draft. It is NOT sent
+    — a human opens Outlook and presses Send.
+
+    folder selects the destination folder by display name, created on first use
+    if absent. Omit it to use the configured default (IRIS_DRAFT_FOLDER,
+    currently "AI Drafts"); pass "" or "Drafts" for the normal Outlook Drafts
+    folder. Set reply_to_message_id to draft a threaded reply."""
     if _disabled():
         return "iris is DISABLED (kill switch engaged)"
     if not to:
@@ -342,9 +359,9 @@ def iris_create_draft(
         out, code = _graph("PATCH", f"/me/messages/{draft_id}", token, json=patch)
         if code != 200:
             return f"draft created but patch failed {code}: {json.dumps(out)[:400]}"
-        # createReply lands it in Drafts; relocate to the staging folder.
+        # createReply lands it in Drafts; relocate to the chosen folder.
         # NOTE: a move returns a NEW message id, so rebind out.
-        folder_id, ferr = _ensure_folder(token)
+        folder_id, ferr = _ensure_folder(token, folder)
         if ferr:
             return ferr
         if folder_id != "drafts":
@@ -365,7 +382,7 @@ def iris_create_draft(
             payload["ccRecipients"] = _recips(cc)
         if bcc:
             payload["bccRecipients"] = _recips(bcc)
-        folder_id, ferr = _ensure_folder(token)
+        folder_id, ferr = _ensure_folder(token, folder)
         if ferr:
             return ferr
         out, code = _graph(
@@ -374,28 +391,32 @@ def iris_create_draft(
         if code not in (200, 201):
             return f"draft creation failed {code}: {json.dumps(out)[:400]}"
 
-    _audit("draft", f"to={','.join(to)} subject={subject!r} id={out.get('id')}")
+    used = (DRAFT_FOLDER if folder is None else folder or "").strip()
+    folder_label = "Drafts" if not used or used.lower() == "drafts" else used
+    _audit("draft", f"to={','.join(to)} folder={folder_label} subject={subject!r} id={out.get('id')}")
     return json.dumps({
         "status": "draft created — NOT sent",
-        "folder": DRAFT_FOLDER or "Drafts",
+        "folder": folder_label,
         "id": out.get("id"),
         "subject": out.get("subject"),
         "to": [r["emailAddress"]["address"] for r in out.get("toRecipients", [])],
         "webLink": out.get("webLink"),
-        "next": f"open the {DRAFT_FOLDER or 'Drafts'} folder in Outlook, read it, press Send",
+        "next": f"open the {folder_label} folder in Outlook, read it, press Send",
     }, indent=2)
 
 
 @mcp.tool()
-def iris_list_drafts(limit: int = 10) -> str:
-    """List recent messages sitting in the staging mail folder."""
+def iris_list_drafts(limit: int = 10, folder: str | None = None) -> str:
+    """List recent messages sitting in a draft folder. folder selects which one
+    by display name; omit it for the configured default (IRIS_DRAFT_FOLDER), or
+    pass "" / "Drafts" for the normal Outlook Drafts folder."""
     if _disabled():
         return "iris is DISABLED (kill switch engaged)"
     limit = max(1, min(int(limit), 50))
     token, err = _token()
     if err:
         return err
-    folder_id, ferr = _ensure_folder(token)
+    folder_id, ferr = _ensure_folder(token, folder)
     if ferr:
         return ferr
     q = (f"/me/mailFolders/{folder_id}/messages?$top={limit}"
@@ -411,6 +432,32 @@ def iris_list_drafts(limit: int = 10) -> str:
         "created": m.get("createdDateTime"),
         "webLink": m.get("webLink"),
     } for m in body.get("value", [])]
+    return json.dumps(items, indent=2)
+
+
+@mcp.tool()
+def iris_list_folders() -> str:
+    """List the mailbox's top-level mail folders (name, id, unread/total counts)
+    so you can pick one to pass as the `folder` argument to iris_create_draft or
+    iris_list_drafts."""
+    if _disabled():
+        return "iris is DISABLED (kill switch engaged)"
+    token, err = _token()
+    if err:
+        return err
+    body, code = _graph(
+        "GET",
+        "/me/mailFolders?$top=100&$select=id,displayName,unreadItemCount,totalItemCount",
+        token,
+    )
+    if code != 200:
+        return f"graph error {code}: {json.dumps(body)[:400]}"
+    items = [{
+        "name": f.get("displayName"),
+        "id": f.get("id"),
+        "unread": f.get("unreadItemCount"),
+        "total": f.get("totalItemCount"),
+    } for f in body.get("value", [])]
     return json.dumps(items, indent=2)
 
 
@@ -481,6 +528,54 @@ def iris_delete_draft(draft_id: str, confirm: bool = False) -> str:
         return f"delete failed {code}: {json.dumps(out)[:400]}"
     _audit("delete", f"id={draft_id}")
     return f"draft {draft_id} deleted"
+
+
+if ENABLE_SEND:
+
+    @mcp.tool()
+    def iris_send_draft(draft_id: str, confirm: bool = False) -> str:
+        """Send an existing draft. This tool exists only because
+        IRIS_ENABLE_SEND=1; a default install cannot send at all. Requires
+        confirm=true, set ONLY after explicit human approval of THIS message.
+        Re-verifies the message is still an unsent draft and re-checks the
+        recipient allowlist before sending."""
+        if _disabled():
+            return "iris is DISABLED (kill switch engaged)"
+        if not confirm:
+            return ("refusing to send without confirm=true. Get explicit human "
+                    "ok for THIS message, then retry with confirm=true.")
+        token, err = _token()
+        if err:
+            return err
+        msg, code = _graph(
+            "GET",
+            f"/me/messages/{draft_id}?$select=isDraft,subject,"
+            "toRecipients,ccRecipients,bccRecipients",
+            token,
+        )
+        if code != 200:
+            return f"could not read draft {draft_id}: {code}: {json.dumps(msg)[:300]}"
+        if not msg.get("isDraft", False):
+            return f"{draft_id} is not an unsent draft (already sent?). Refusing."
+        addrs = [r["emailAddress"]["address"]
+                 for key in ("toRecipients", "ccRecipients", "bccRecipients")
+                 for r in msg.get(key, [])
+                 if r.get("emailAddress", {}).get("address")]
+        if not addrs:
+            return "draft has no recipients — nothing to send."
+        problem = _check_recipients(addrs)
+        if problem:
+            return problem
+        out, code = _graph("POST", f"/me/messages/{draft_id}/send", token)
+        if code not in (200, 202, 204):
+            return f"send failed {code}: {json.dumps(out)[:400]}"
+        _audit("send", f"id={draft_id} to={','.join(addrs)} subject={msg.get('subject')!r}")
+        return json.dumps({
+            "status": "SENT — this one actually went out",
+            "id": draft_id,
+            "to": addrs,
+            "subject": msg.get("subject"),
+        }, indent=2)
 
 
 def main() -> None:

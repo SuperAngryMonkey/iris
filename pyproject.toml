@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iris-mcp"
-version = "0.1.0"
-description = "A Microsoft 365 mail MCP server that can draft but cannot send. The token has no Mail.Send scope."
+version = "0.2.0"
+description = "A Microsoft 365 mail MCP server that drafts into Outlook. Sending is off by default and opt-in (IRIS_ENABLE_SEND)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

@@ -32,7 +32,7 @@ Graph call — so no stray folder was ever created in the mailbox.
 ## 4. Publish
 git init, MIT license, README, pushed to github.com/SuperAngryMonkey/iris.
 Pre-publish audit: scanned the committed tree for emails, IPs, tailnet names and
-local usernames. Found and genericized `/Users/jamessmith/...` paths in
+local usernames. Found and genericized `/Users/<user>/...` paths in
 HANDOFF.md, and replaced real domains in `recipients.allow` with example ones —
 one of them was a third party's and had no business being in a public repo.
 
@@ -64,14 +64,14 @@ completed. Worked around with two christian-run scripts against the same
 2. Human approves in a browser. Then `acquire_token_by_device_flow(flow)`,
    write the cache at mode 600, delete the stashed flow.
 
-Result: signed in as james@bigassmonkey.com, scopes
+Result: signed in as the mailbox owner, scopes
 `Mail.ReadWrite openid profile email`. No Mail.Send.
 
 ## 8. First real use — revealed bug #2 and proved the thing works
 `iris_auth_status()` returned Graph 403 `Authorization_RequestDenied` — it calls
 `/me`, which needs `User.Read`, and the token only carries `Mail.ReadWrite`.
 
-`iris_create_draft(...)` then succeeded: draft to dean@iothings.ai created in a
+`iris_create_draft(...)` then succeeded: draft to a test recipient created in a
 newly auto-created **Cyrano** folder, and `iris_list_drafts()` read it back
 (created 2026-07-23T18:00:29Z). Ghost opened it in Outlook and sent it.
 
