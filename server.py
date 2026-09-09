@@ -31,6 +31,7 @@ Setup (one time, in Entra ID):
      IRIS_ENABLE_SEND=1, and re-run iris_login to re-consent.
   4. Export IRIS_CLIENT_ID and IRIS_TENANT_ID, then call iris_login().
 """
+import hmac
 import json
 import os
 import re
@@ -578,9 +579,96 @@ if ENABLE_SEND:
         }, indent=2)
 
 
+# ---------------------------------------------------------------------------
+# HTTP transport (optional; stdio remains the default and is unchanged)
+#
+# Setting IRIS_TRANSPORT to "streamable-http" or "sse" serves the same tools
+# over HTTP, so hosted clients that only accept remote MCP connectors — the Grok
+# app and Grok Bot among them — can attach. Nothing about the auth model
+# changes: it is still delegated device-code, still one signed-in user, still
+# that user's mailbox only.
+#
+# HTTP mode is REFUSED without IRIS_HTTP_TOKEN. An unauthenticated iris on a
+# routable address is a readable mailbox, and Mail.ReadWrite reads everything.
+#
+# The bearer check below is the last line of defence, not the only one. Bind to
+# a private interface (IRIS_HTTP_HOST) and put a real front door in front of it.
+# ---------------------------------------------------------------------------
+
+
+class _BearerGate:
+    """ASGI middleware: reject any request without the shared bearer token."""
+
+    def __init__(self, app, token: str) -> None:
+        self._app = app
+        self._expected = f"Bearer {token}"
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope.get("type") != "http":
+            await self._app(scope, receive, send)
+            return
+
+        offered = ""
+        for name, value in scope.get("headers", []):
+            if name.lower() == b"authorization":
+                offered = value.decode("latin-1", "replace")
+                break
+
+        if not hmac.compare_digest(offered, self._expected):
+            _audit("http-denied", f"path={scope.get('path', '')!r}")
+            body = b'{"error":"unauthorized"}'
+            await send({
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode()),
+                    (b"www-authenticate", b"Bearer"),
+                ],
+            })
+            await send({"type": "http.response.body", "body": body})
+            return
+
+        await self._app(scope, receive, send)
+
+
 def main() -> None:
     """Console-script entry point."""
-    mcp.run()
+    transport = os.environ.get("IRIS_TRANSPORT", "stdio").strip().lower()
+
+    if transport == "stdio":
+        mcp.run()
+        return
+
+    if transport not in ("streamable-http", "sse"):
+        raise SystemExit(
+            f"IRIS_TRANSPORT must be 'stdio', 'streamable-http', or 'sse' "
+            f"(got {transport!r})"
+        )
+
+    token = os.environ.get("IRIS_HTTP_TOKEN", "")
+    if len(token) < 32:
+        raise SystemExit(
+            "IRIS_TRANSPORT selects an HTTP transport, so IRIS_HTTP_TOKEN must "
+            "be set to at least 32 characters. Refusing to serve a mailbox "
+            "without authentication."
+        )
+
+    import uvicorn
+
+    host = os.environ.get("IRIS_HTTP_HOST", "127.0.0.1")
+    port = int(os.environ.get("IRIS_HTTP_PORT", "8765"))
+    mcp.settings.host = host
+    mcp.settings.port = port
+
+    app = mcp.sse_app() if transport == "sse" else mcp.streamable_http_app()
+    _audit("http-start", f"transport={transport} bind={host}:{port}")
+    uvicorn.run(
+        _BearerGate(app, token),
+        host=host,
+        port=port,
+        log_level=os.environ.get("IRIS_LOG_LEVEL", "info"),
+    )
 
 
 if __name__ == "__main__":
