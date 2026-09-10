@@ -1,0 +1,9 @@
+[project]
+name = "iris-worker"
+version = "0.4.0"
+description = "iris as a Cloudflare Python Worker (draft-only bot mailbox)"
+requires-python = ">=3.13"
+dependencies = ["mcp<2", "httpx", "cryptography"]
+
+[dependency-groups]
+dev = ["workers-py", "workers-runtime-sdk"]

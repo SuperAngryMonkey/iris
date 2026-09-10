@@ -1,0 +1,13 @@
+SECRETS.txt
+*.secret
+wrangler.jsonc
+python_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.wrangler/
+node_modules/
+dist/
+build/
+.DS_Store
