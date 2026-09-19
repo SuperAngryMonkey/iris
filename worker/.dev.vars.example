@@ -1,0 +1,17 @@
+# Deploy to Cloudflare prompts for every UNCOMMENTED entry below as a required
+# secret and ships its value with your Worker. Fill these in during deploy.
+# Keep the optional ones commented until you actually need them.
+
+# Your Entra app's Application (client) ID
+IRIS_CLIENT_ID=
+# Your Entra Directory (tenant) ID
+IRIS_TENANT_ID=
+# Bearer the agent presents. Generate: openssl rand -base64 32
+IRIS_HTTP_TOKEN=
+# 32-byte AES-GCM key for the KV token cache. Generate: openssl rand -base64 32
+IRIS_ENC_KEY=
+
+# Optional — uncomment only if you use them:
+# IRIS_DRAFT_FOLDER=AI Drafts
+# IRIS_ALLOWLIST=example.com, someone@example.com
+# IRIS_DISABLED=1

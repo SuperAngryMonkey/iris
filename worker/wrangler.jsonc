@@ -1,0 +1,10 @@
+{
+  // Public template — Cloudflare provisions your own KV namespace on deploy and
+  // rewrites the id below. Entra IDs, bearer, and encryption key are set as
+  // secrets during deploy (see .dev.vars.example), never committed here.
+  "name": "iris",
+  "main": "src/entry.py",
+  "compatibility_date": "2026-09-08",
+  "compatibility_flags": ["python_workers"],
+  "kv_namespaces": [{ "binding": "IRIS_KV", "id": "0000000000000000000000000000abcd" }]
+}

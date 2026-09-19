@@ -4,6 +4,19 @@
 
 Sibling of the stdio [`iris`](https://github.com/SuperAngryMonkey/iris) package (PyPI `iris-mcp`). Same intent — an AI agent operating one mailbox safely — but this runtime lives 100% in Cloudflare and speaks MCP over HTTP, so a sandboxed agent (e.g. a hosted chatbot) can reach it with only a URL + bearer.
 
+## One-click deploy
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/SuperAngryMonkey/iris/tree/main/worker)
+
+Forks the repo, provisions a KV namespace, and prompts for the four values in
+`.dev.vars.example` (`IRIS_CLIENT_ID`, `IRIS_TENANT_ID`, `IRIS_HTTP_TOKEN`,
+`IRIS_ENC_KEY`). You still need an Entra app and a licensed bot mailbox first
+(Setup steps 1-2) and a one-time sign-in after (step 7).
+
+> This is a **Python** Worker whose dependencies are vendored by `pywrangler`. If
+> the one-click build fails, set the deploy command to `uv run pywrangler deploy`
+> in the deploy form, or use the manual **Setup** steps below — those always work.
+
 ## Architecture
 
 ```

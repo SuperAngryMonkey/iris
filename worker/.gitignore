@@ -1,6 +1,6 @@
 SECRETS.txt
 *.secret
-wrangler.jsonc
+.dev.vars
 python_modules/
 .venv/
 venv/
