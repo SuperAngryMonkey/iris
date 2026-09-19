@@ -2,6 +2,13 @@
 
 All notable changes to iris-worker (the Cloudflare Python Worker port of iris).
 
+## 0.4.1
+
+- Added a Deploy to Cloudflare one-click template: a public `wrangler.jsonc`
+  (KV auto-provisioned per deployer, no instance IDs), `.dev.vars.example` for the
+  four prompted secrets, and a deploy button in the README. Packaging and docs
+  only — `src/entry.py` is byte-for-byte unchanged from 0.4.0.
+
 ## 0.4.0
 - Add `Mail.Send` scope and `iris_send_draft` — send an existing draft **as the bot mailbox**; `confirm=true` required per send.
 - Add `iris_audit_tail` and a KV audit log recording every send.
