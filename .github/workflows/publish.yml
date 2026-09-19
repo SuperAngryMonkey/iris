@@ -1,0 +1,46 @@
+name: Publish to PyPI
+
+# Trusted Publishing: no API token. On PyPI, the trusted publisher for iris-mcp is
+# owner SuperAngryMonkey, repo iris, workflow publish.yml, environment pypi.
+# Push a tag like v0.2.2 to publish the stdio package. (worker-v* tags are the
+# Cloudflare Worker's own version line and do not trigger this.)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade build
+      - run: python -m build
+      - name: Smoke-test the wheel in a clean venv
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --quiet dist/*.whl
+          test -x /tmp/smoke/bin/iris-mcp
+          /tmp/smoke/bin/python -c "import server; print(sum(1 for n in dir(server) if n.startswith('iris_')), 'iris tools')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
