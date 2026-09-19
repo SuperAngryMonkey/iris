@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.1 — 2026-09-02
+
+- Optional sending, off by default and still structural. `IRIS_ENABLE_SEND=1` —
+  together with granting `Mail.Send` on your app registration and re-consenting —
+  registers an `iris_send_draft` tool. Without all three the tool isn't registered
+  and the token can't transmit, so the absent-capability guarantee is unchanged for
+  anyone who doesn't opt in. Enabling it trades that structural guarantee for in-code
+  guardrails: `confirm=true`, an allowlist re-check, and a check that the message is
+  still an unsent draft. `SECURITY.md` describes the trade honestly.
+- User-selectable draft folder. `iris_create_draft` and `iris_list_drafts` take an
+  optional `folder`, and a new `iris_list_folders` lists your top-level folders. The
+  default stays `AI Drafts`.
+- Added `docs/ADMIN-DEPLOYMENT.md` — authorizing iris across a Microsoft 365 tenant
+  (admin consent, per-user assignment, the delegated model), linked from the README.
+- Documented that iris needs Python 3.10+ (the macOS system 3.9 is too old), and that
+  the Grok CLI runs iris locally while the Grok app/Bot is remote-only.
+- Scrubbed personal Entra IDs and a third-party address from the tracked docs.
+
 ## 0.1.0 — 2026-08-21
 
 First published release.
