@@ -181,9 +181,9 @@ iris *can* reach with `Mail.ReadWrite`: see [SECURITY.md](SECURITY.md).
 ## Run it as an HTTP server (Cloudflare Worker)
 
 Besides `pip install iris-mcp` (stdio), iris ships a Cloudflare Python Worker in
-[`worker/`](worker/) that speaks MCP over HTTP — for agents that can only reach a
+[`worker/`](https://github.com/SuperAngryMonkey/iris/tree/main/worker) that speaks MCP over HTTP — for agents that can only reach a
 remote URL (for example a hosted chatbot). One-click deploy and full setup are in
-[`worker/README.md`](worker/README.md).
+[`worker/README.md`](https://github.com/SuperAngryMonkey/iris/tree/main/worker/README.md).
 
 ## License
 

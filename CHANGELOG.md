@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 — 2026-09-19
+
+- Docs only — no change to the stdio server. iris now also ships as a Cloudflare
+  Python Worker (HTTP transport) under `worker/`, for agents that can only reach a
+  remote URL (for example a hosted chatbot). The README points to it, with a
+  one-click deploy.
+
 ## 0.2.1 — 2026-09-02
 
 - Optional sending, off by default and still structural. `IRIS_ENABLE_SEND=1` —
