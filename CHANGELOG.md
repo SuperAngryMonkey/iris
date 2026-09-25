@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.0 — 2026-09-25
+
+- **Read tools.** `Mail.ReadWrite` has always permitted reading; iris now exposes it:
+  - `iris_list_messages` — newest-first list of any folder (Inbox by default;
+    well-known names like Sent Items, Archive, Junk, or any top-level folder by
+    name), with `unread_only` and `since` filters.
+  - `iris_search_messages` — Outlook/KQL search across the mailbox
+    (`from:`, `to:`, `subject:`, `hasattachments:`, `received>=`…).
+  - `iris_get_message` — one message in full: headers, plain-text body
+    (truncated at `max_chars`), attachment names and sizes (contents are not
+    downloaded).
+  - `iris_get_thread` — a whole conversation, oldest first, using each
+    message's unique body so quoted history isn't repeated.
+- Reads never change the mailbox: a GET does not flip `isRead`, the folder
+  resolver for reads never creates folders, and every read is written to the
+  audit log.
+- Tool docstrings mark message content as untrusted third-party text, so an
+  agent treats it as data rather than instructions.
+- `IRIS_DISABLE_READ=1` unregisters the four read tools for anyone who wants the
+  old drafts-only tool surface. Scopes are unchanged either way.
+- Running more than one mailbox: start a second iris with its own
+  `IRIS_CLIENT_ID`/`IRIS_TENANT_ID` and separate `IRIS_TOKEN_CACHE`,
+  `IRIS_FLOW_FILE` and `IRIS_AUDIT_LOG` paths (documented in the README).
+
 ## 0.2.2 — 2026-09-19
 
 - Docs only — no change to the stdio server. iris now also ships as a Cloudflare

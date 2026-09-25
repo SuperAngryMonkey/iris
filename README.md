@@ -1,6 +1,6 @@
 # iris
 
-**A Microsoft 365 mail server for AI agents that does not send email — until you decide it should.**
+**A Microsoft 365 mail server for AI agents that reads your mailbox and writes drafts, but does not send email — until you decide it should.**
 
 By default iris requests the delegated Graph scope `Mail.ReadWrite` and never
 `Mail.Send`. The access token it holds has no capability to transmit a message,
@@ -108,11 +108,45 @@ to an HTTP transport is possible, but out of scope for this project.
 | `iris_login_finish` | Completes sign-in; safe to call repeatedly while you type the code |
 | `iris_auth_status` | Who is signed in, which scopes, and whether Graph is reachable |
 | `iris_list_folders` | Lists your top-level mail folders, so you can pick one for a draft |
+| `iris_list_messages` | Lists recent messages in a folder, newest first (Inbox by default; `unread_only`, `since`) |
+| `iris_search_messages` | Searches the mailbox with Outlook/KQL syntax (`from:`, `subject:`, `received>=`…) |
+| `iris_get_message` | Reads one message in full: headers, plain-text body, attachment names |
+| `iris_get_thread` | Reads a whole conversation, oldest first |
 | `iris_create_draft` | Writes a draft (to/cc/bcc, subject, body or HTML, optional reply-to, optional `folder`) |
 | `iris_list_drafts` | Lists what is waiting in a draft folder (optional `folder`) |
 | `iris_update_draft` | Revises a draft in place |
 | `iris_delete_draft` | Deletes a draft; requires `confirm=true` |
 | `iris_send_draft` | **Only present when `IRIS_ENABLE_SEND=1`.** Sends an existing draft; requires `confirm=true`, re-checks the allowlist |
+
+### Reading mail
+
+The four read tools are read-only: they never mark a message read, never create
+folders, and every call is written to the audit log. Message bodies are
+third-party text — an agent should treat them as data, never as instructions.
+Set `IRIS_DISABLE_READ=1` to unregister them if you want a drafts-only tool
+surface (the granted scope is the same either way; see [SECURITY.md](SECURITY.md)).
+
+### More than one mailbox
+
+Run a second copy under another name in your MCP client config, with its own
+`IRIS_CLIENT_ID` / `IRIS_TENANT_ID` (for a mailbox in another tenant) and its
+own `IRIS_TOKEN_CACHE`, `IRIS_FLOW_FILE` and `IRIS_AUDIT_LOG` paths so the two
+never share a sign-in:
+
+```json
+"iris-work": {
+  "command": "iris-mcp",
+  "env": {
+    "IRIS_CLIENT_ID": "<app id in the other tenant>",
+    "IRIS_TENANT_ID": "<other tenant id>",
+    "IRIS_TOKEN_CACHE": "~/.config/iris-work/token_cache.json",
+    "IRIS_FLOW_FILE": "~/.config/iris-work/pending_flow.json",
+    "IRIS_AUDIT_LOG": "~/.config/iris-work/audit.log"
+  }
+}
+```
+
+Use absolute paths if your client does not expand `~`.
 
 ## Where drafts go
 
