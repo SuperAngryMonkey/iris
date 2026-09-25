@@ -13,6 +13,9 @@ Containment (heimdall doctrine applied to mail):
                         sending is gated by a per-call confirm and the allowlist.
   - DELEGATED AUTH      public client + device code. No client secret on disk,
                         no admin consent, blast radius = this mailbox only.
+  - READ TOOLS          list/search/get messages and threads (read-only, never
+                        mark read, every read audited). IRIS_DISABLE_READ=1
+                        removes them.
   - RECIPIENT ALLOWLIST if recipients.allow is present and non-empty, drafts to
                         anything outside it are refused.
   - AUDIT LOG           every draft written appended to audit.log.
@@ -59,6 +62,9 @@ AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 # IRIS_ENABLE_SEND=1, which ALSO requires Mail.Send granted on the Entra app and
 # a fresh sign-in. A default install stays structurally unable to send.
 ENABLE_SEND = os.environ.get("IRIS_ENABLE_SEND") == "1"
+# Read tools are on by default (Mail.ReadWrite has always permitted reading).
+# IRIS_DISABLE_READ=1 unregisters them for a drafts-only tool surface.
+DISABLE_READ = os.environ.get("IRIS_DISABLE_READ") == "1"
 SCOPES = ["Mail.ReadWrite"] + (["Mail.Send"] if ENABLE_SEND else [])
 
 GRAPH = "https://graph.microsoft.com/v1.0"
@@ -519,7 +525,6 @@ def _summary(m: dict) -> dict:
     }
 
 
-@mcp.tool()
 def iris_list_messages(
     folder: str | None = None,
     limit: int = 25,
@@ -557,7 +562,6 @@ def iris_list_messages(
     return json.dumps(items, indent=2)
 
 
-@mcp.tool()
 def iris_search_messages(query: str, limit: int = 25, folder: str | None = None) -> str:
     """Search the mailbox (all folders unless folder is given). query uses
     Outlook/KQL syntax: plain words, or from:clint, to:gary, subject:invoice,
@@ -587,7 +591,6 @@ def iris_search_messages(query: str, limit: int = 25, folder: str | None = None)
     return json.dumps(items, indent=2)
 
 
-@mcp.tool()
 def iris_get_message(message_id: str, max_chars: int = 20000) -> str:
     """Read one message in full: headers, plain-text body (truncated at
     max_chars), and attachment names/sizes (contents are not downloaded).
@@ -633,7 +636,6 @@ def iris_get_message(message_id: str, max_chars: int = 20000) -> str:
     return json.dumps(out, indent=2)
 
 
-@mcp.tool()
 def iris_get_thread(conversation_id: str, max_chars_each: int = 4000) -> str:
     """Read a whole conversation (every message sharing conversation_id, from
     any folder), oldest first. Uses each message's unique body so quoted
@@ -664,6 +666,11 @@ def iris_get_thread(conversation_id: str, max_chars_each: int = 4000) -> str:
         })
     _audit("read", f"thread n={len(items)}")
     return json.dumps(items, indent=2)
+
+
+if not DISABLE_READ:
+    for _fn in (iris_list_messages, iris_search_messages, iris_get_message, iris_get_thread):
+        mcp.tool()(_fn)
 
 
 @mcp.tool()

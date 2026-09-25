@@ -47,6 +47,14 @@ Do not take the README's word for it.
 - create, modify and delete drafts
 - delete mail
 
+Since 0.3.0 iris also ships tools that use the read half of that scope
+(`iris_list_messages`, `iris_search_messages`, `iris_get_message`,
+`iris_get_thread`). They add no capability the token did not already have —
+they make it convenient. `IRIS_DISABLE_READ=1` unregisters them, but that is a
+code-level switch, not a narrower grant: the token can still read. Message
+content is third-party text and a prompt-injection vector; the tool
+descriptions tell the agent to treat it as data.
+
 "Cannot send" is a narrower promise than "safe". An agent driving iris can read
 your entire mailbox, and anything it reads can end up in the context of a model
 you do not control. If that is unacceptable for your mail, iris is not the right
