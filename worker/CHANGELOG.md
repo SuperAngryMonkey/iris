@@ -2,6 +2,16 @@
 
 All notable changes to iris-worker (the Cloudflare Python Worker port of iris).
 
+## 0.5.0
+
+- Read tools, matching iris 0.3.0 (stdio): `iris_list_messages`,
+  `iris_search_messages`, `iris_get_message`, `iris_get_thread`. Read-only (a GET
+  never flips `isRead`; the read folder resolver never creates folders); message
+  content is flagged to the agent as untrusted data.
+- `IRIS_DISABLE_READ=1` unregisters them. Reads are not written to the KV audit
+  log (it stays a send log, and KV write quotas are small).
+- 14 tools total.
+
 ## 0.4.1
 
 - Added a Deploy to Cloudflare one-click template: a public `wrangler.jsonc`

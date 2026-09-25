@@ -42,6 +42,10 @@ Microsoft Graph  ->  the bot mailbox
 - `iris_list_folders` — list mail folders
 - `iris_create_draft` — compose an UNSENT draft (optionally a threaded reply) into a folder
 - `iris_list_drafts` — list drafts in a folder
+- `iris_list_messages` — list recent messages in a folder (Inbox by default; `unread_only`, `since`)
+- `iris_search_messages` — Outlook/KQL search across the mailbox
+- `iris_get_message` — one message in full (plain-text body, attachment names)
+- `iris_get_thread` — a whole conversation, oldest first
 - `iris_update_draft` — revise a draft in place
 - `iris_delete_draft` — move a draft to Deleted Items (confirm=true)
 - `iris_send_draft` — send an existing draft as the bot (confirm=true)
